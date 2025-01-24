@@ -11,17 +11,17 @@ def create_payment():
     try:
         data = request.get_json()
         amount = data.get('amount', 500)
-        print(f"Received request with amount: {amount}")  # Add logging
+        print(f"Creating payment intent for amount: {amount}")
         
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency='usd',
             automatic_payment_methods={"enabled": True}
         )
-        print(f"Created payment intent: {intent.id}")  # Add logging
+        print(f"Created intent with secret: {intent.client_secret}")
         return jsonify({
-            'clientSecret': intent.client_secret
+            'clientSecret': intent.client_secret  # Verify this matches exactly
         })
     except Exception as e:
-        print(f"Error: {str(e)}")  # Add logging
+        print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403

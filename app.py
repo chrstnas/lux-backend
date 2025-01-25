@@ -1,10 +1,9 @@
-from flask import Flask, jsonify, request  # Added request here
+from flask import Flask, jsonify, request
 import stripe
+import os
 
 app = Flask(__name__)
-
-# Replace this with your Stripe secret key (sk_test_...)
-stripe.api_key = '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'
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 @app.route('/create-payment-intent', methods=['POST'])
 def create_payment():

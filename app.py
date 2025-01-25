@@ -18,9 +18,9 @@ def create_payment():
             automatic_payment_methods={"enabled": True}
         )
         print(f"Created intent with secret: {intent.client_secret}")
-        return jsonify({
-            'client_secret': intent.client_secret  # Changed from clientSecret to client_secret
-        })
+return jsonify({
+    'client_secret': intent.client_secret  # Must be client_secret for Stripe
+})
     except Exception as e:
         print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403

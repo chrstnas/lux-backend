@@ -19,7 +19,7 @@ def create_payment():
         )
         print(f"Created intent with secret: {intent.client_secret}")
         return jsonify({
-            'clientSecret': intent.client_secret
+            'client_secret': intent.client_secret  # Changed from clientSecret to client_secret
         })
     except Exception as e:
         print(f"Error creating payment intent: {e}")

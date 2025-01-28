@@ -8,6 +8,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 @app.route('/create-payment-intent', methods=['POST'])
 def create_payment():
     try:
+        print(f"Stripe API Key set: {stripe.api_key is not None}")
         data = request.get_json()
         amount = data.get('amount', 500)
         print(f"Creating payment intent for amount: {amount}")
@@ -17,10 +18,11 @@ def create_payment():
             currency='usd',
             automatic_payment_methods={"enabled": True}
         )
-        print(f"Created intent with secret: {intent.client_secret}")
-        return jsonify({
-            'clientSecret': intent.client_secret  # Keep as clientSecret
-        })
+        response = {
+            'clientSecret': intent.client_secret
+        }
+        print(f"Sending response: {response}")
+        return jsonify(response)
     except Exception as e:
         print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403

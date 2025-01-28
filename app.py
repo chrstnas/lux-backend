@@ -19,12 +19,11 @@ def create_payment():
         )
         print(f"Created intent with secret: {intent.client_secret}")
         return jsonify({
-            'client_secret': intent.client_secret  # Changed from clientSecret to client_secret
+            'clientSecret': intent.client_secret  # Keep as clientSecret
         })
     except Exception as e:
         print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403
 
-return jsonify({
-    'client_secret': intent.client_secret  # MUST use client_secret
-})
+if __name__ == '__main__':
+    app.run(port=4242)

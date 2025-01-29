@@ -16,6 +16,10 @@ def check_mode():
 @app.route('/create-payment-intent', methods=['POST'])
 def create_payment():
     try:
+        print("STRIPE KEY DIAGNOSTICS:")
+        print(f"Stripe Secret Key Prefix: {stripe.api_key[:7]}")
+        print(f"Stripe Secret Key Contains 'live': {'live' in stripe.api_key}")
+        
         print("STRIPE MODE CHECK:")
         print(f"API Key Mode: {'LIVE' if 'live' in stripe.api_key else 'TEST'}")
         print(f"API Key Prefix: {stripe.api_key[:7]}")

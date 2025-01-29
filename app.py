@@ -26,6 +26,6 @@ def create_payment():
     except Exception as e:
         print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403
-
+print(f"Current API Key mode: {'live' if 'live' in stripe.api_key else 'test'}")
 if __name__ == '__main__':
     app.run(port=4242)

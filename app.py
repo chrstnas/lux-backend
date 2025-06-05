@@ -187,6 +187,34 @@ def transfer_to_merchant():
             'success': False
         }), 400
 
+@app.route('/stripe-return', methods=['GET'])
+def stripe_return():
+    return """
+    <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h2>✅ Stripe Setup Complete!</h2>
+            <p>You can now close this window and return to the LUX app.</p>
+            <script>
+                setTimeout(function() {
+                    window.close();
+                }, 3000);
+            </script>
+        </body>
+    </html>
+    """
+
+@app.route('/stripe-refresh', methods=['GET'])
+def stripe_refresh():
+    return """
+    <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h2>🔄 Setting up Stripe...</h2>
+            <p>Please wait while we set up your account.</p>
+        </body>
+    </html>
+    """
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

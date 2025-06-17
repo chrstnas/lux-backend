@@ -215,6 +215,53 @@ def stripe_refresh():
     """
 
 
+@app.route('/process-apple-pay', methods=['POST'])
+def process_apple_pay():
+    try:
+        data = request.get_json()
+        payment_token = data.get('payment_token')
+        amount = data.get('amount', 500)  # Default to $5.00 if not provided
+        currency = data.get('currency', 'usd')
+        
+        print(f"Processing Apple Pay payment for amount: ${amount/100}")
+        print(f"Payment token length: {len(payment_token) if payment_token else 0}")
+        
+        # Create PaymentIntent with Apple Pay token
+        intent = stripe.PaymentIntent.create(
+            amount=amount,
+            currency=currency,
+            payment_method_data={
+                'type': 'card',
+                'card': {
+                    'token': payment_token
+                }
+            },
+            confirm=True,
+            automatic_payment_methods={"enabled": True}
+        )
+        
+        print(f"✅ Apple Pay payment succeeded: {intent.id}")
+        
+        return jsonify({
+            'status': 'succeeded',
+            'payment_intent': intent.id,
+            'success': True
+        })
+        
+    except stripe.error.CardError as e:
+        print(f"❌ Apple Pay card error: {e.user_message}")
+        return jsonify({
+            'error': e.user_message,
+            'success': False
+        }), 400
+        
+    except Exception as e:
+        print(f"❌ Apple Pay processing error: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 400
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

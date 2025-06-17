@@ -237,6 +237,7 @@ def process_apple_pay():
                 }
             },
             confirm=True,
+            return_url="https://lux-stripe-backend.onrender.com/payment-return",  # ✅ ADD THIS
             automatic_payment_methods={"enabled": True}
         )
         
@@ -261,6 +262,25 @@ def process_apple_pay():
             'error': str(e),
             'success': False
         }), 400
+
+# ✅ ADD THIS NEW ENDPOINT
+@app.route('/payment-return')
+def payment_return():
+    return """
+    <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h2>✅ Payment Complete!</h2>
+            <p>Your payment was processed successfully. You can close this window.</p>
+            <script>
+                setTimeout(function() {
+                    window.close();
+                }, 3000);
+            </script>
+        </body>
+    </html>
+    """
+        
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))

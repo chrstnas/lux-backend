@@ -31,8 +31,10 @@ def create_payment():
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency='usd',
-            payment_method_types=['card', 'link', 'apple_pay'],  # ADDED apple_pay
-            automatic_payment_methods={"enabled": True}
+            automatic_payment_methods={
+                "enabled": True,
+                "allow_redirects": "always"
+            }
         )
         print(f"Created intent with secret: {intent.client_secret}")
         return jsonify({

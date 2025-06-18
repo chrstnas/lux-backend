@@ -31,6 +31,7 @@ def create_payment():
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency='usd',
+            payment_method_types=['card', 'link', 'apple_pay'],  # ADDED apple_pay
             automatic_payment_methods={"enabled": True}
         )
         print(f"Created intent with secret: {intent.client_secret}")
@@ -41,7 +42,7 @@ def create_payment():
         print(f"Error creating payment intent: {e}")
         return jsonify(error=str(e)), 403
 
-# ✅ NEW STRIPE CONNECT ENDPOINTS
+# STRIPE CONNECT ENDPOINTS
 @app.route('/create-express-account', methods=['POST'])
 def create_express_account():
     try:
@@ -54,9 +55,9 @@ def create_express_account():
         
         account = stripe.Account.create(
             type='express',
-            country='US',  # Adjust based on your merchants' countries
+            country='US',
             email=business_email,
-            business_type='individual',  # or 'company' based on your needs
+            business_type='individual',
             metadata={
                 'business_id': business_id,
                 'platform': 'lux'
@@ -214,62 +215,6 @@ def stripe_refresh():
     </html>
     """
 
-# ✅ FIXED APPLE PAY ENDPOINT
-@app.route('/process-apple-pay', methods=['POST'])
-def process_apple_pay():
-    try:
-        data = request.get_json()
-        payment_token = data.get('payment_token')
-        amount = data.get('amount', 500)
-        currency = data.get('currency', 'usd')
-        
-        print(f"Processing Apple Pay payment for amount: ${amount/100}")
-        print(f"Payment token length: {len(payment_token) if payment_token else 0}")
-        
-        # ✅ FIXED: Create payment method first
-        payment_method = stripe.PaymentMethod.create(
-            type='card',
-            card={
-                'token': payment_token
-            }
-        )
-        
-        print(f"✅ Created payment method: {payment_method.id}")
-        
-        # Then create and confirm the PaymentIntent
-        intent = stripe.PaymentIntent.create(
-            amount=amount,
-            currency=currency,
-            payment_method=payment_method.id,
-            confirmation_method='manual',
-            confirm=True,
-            return_url="https://lux-stripe-backend.onrender.com/payment-return"
-        )
-        
-        print(f"✅ Apple Pay payment succeeded: {intent.id}")
-        
-        return jsonify({
-            'status': 'succeeded',
-            'payment_intent': intent.id,
-            'success': True
-        })
-        
-    except stripe.error.CardError as e:
-        print(f"❌ Apple Pay card error: {e.user_message}")
-        return jsonify({
-            'error': e.user_message,
-            'success': False
-        }), 400
-        
-    except Exception as e:
-        print(f"❌ Apple Pay processing error: {e}")
-        print(f"Full error details: {str(e)}")
-        return jsonify({
-            'error': str(e),
-            'success': False
-        }), 400
-
-# ✅ PAYMENT RETURN ENDPOINT
 @app.route('/payment-return')
 def payment_return():
     return """
@@ -285,15 +230,6 @@ def payment_return():
         </body>
     </html>
     """
-
-# ✅ TEST ENDPOINT
-@app.route('/test-apple-pay', methods=['GET'])
-def test_apple_pay():
-    return jsonify({
-        'stripe_key_exists': stripe.api_key is not None,
-        'stripe_key_prefix': stripe.api_key[:12] if stripe.api_key else None,
-        'backend_working': True
-    })
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))

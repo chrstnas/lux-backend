@@ -233,6 +233,68 @@ def payment_return():
     </html>
     """
 
+@app.route('/create-balance-payment', methods=['POST'])
+def create_balance_payment():
+    try:
+        data = request.get_json()
+        merchant_stripe_account = data.get('merchant_stripe_account')  # Connected account ID
+        amount_cents = data.get('amount_cents')  # Amount in cents
+        base_amount_cents = data.get('base_amount_cents')  # Base without tip
+        tip_amount_cents = data.get('tip_amount_cents', 0)  # Tip amount
+        merchant_rate = data.get('merchant_rate', 0)  # Reward percentage
+        transaction_id = data.get('transaction_id')  # For tracking
+        
+        print(f"Creating balance payment to merchant: {merchant_stripe_account}")
+        print(f"Total amount: ${amount_cents/100} (Base: ${base_amount_cents/100}, Tip: ${tip_amount_cents/100})")
+        print(f"Merchant rate: {merchant_rate}%")
+        
+        # Calculate what merchant gets (base minus rewards + full tip)
+        reward_amount = int(base_amount_cents * merchant_rate / 100)
+        platform_fee = int(base_amount_cents * 0.01)  # 1% platform fee on base only
+        merchant_receives = base_amount_cents - reward_amount - platform_fee + tip_amount_cents
+        
+        print(f"Merchant receives: ${merchant_receives/100}")
+        print(f"Reward pool: ${reward_amount/100}")
+        print(f"Platform fee: ${platform_fee/100}")
+        
+        # Create the transfer to merchant
+        transfer = stripe.Transfer.create(
+            amount=merchant_receives,
+            currency='usd',
+            destination=merchant_stripe_account,
+            description=f"Payment for transaction {transaction_id}",
+            metadata={
+                'transaction_id': transaction_id,
+                'base_amount': base_amount_cents,
+                'tip_amount': tip_amount_cents,
+                'reward_amount': reward_amount,
+                'platform_fee': platform_fee
+            }
+        )
+        
+        print(f"✅ Transfer created: {transfer.id}")
+        
+        return jsonify({
+            'transfer_id': transfer.id,
+            'merchant_received': merchant_receives,
+            'reward_amount': reward_amount,
+            'platform_fee': platform_fee,
+            'success': True
+        })
+        
+    except stripe.error.StripeError as e:
+        print(f"❌ Stripe error: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 400
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 400
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

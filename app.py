@@ -295,6 +295,41 @@ def create_balance_payment():
             'success': False
         }), 400
 
+@app.route('/get-recent-charge', methods=['POST'])
+def get_recent_charge():
+    try:
+        data = request.get_json()
+        account_id = data.get('account_id')
+        
+        print(f"Fetching recent charges for account: {account_id}")
+        
+        # Get charges from the connected account
+        charges = stripe.Charge.list(
+            limit=1,
+            stripe_account=account_id
+        )
+        
+        if charges.data:
+            charge = charges.data[0]
+            return jsonify({
+                'amount': charge.amount,
+                'description': charge.description,
+                'created': charge.created,
+                'success': True
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No recent charges found'
+            })
+            
+    except Exception as e:
+        print(f"❌ Error fetching charges: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 400
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

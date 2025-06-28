@@ -353,8 +353,13 @@ def square_oauth_authorize():
         data = request.get_json()
         business_id = data.get('business_id')
         
+        print(f"🔍 DEBUG: Received business_id: {business_id}")
+        print(f"🔍 DEBUG: SQUARE_APPLICATION_ID: {SQUARE_APPLICATION_ID}")
+        print(f"🔍 DEBUG: SQUARE_ENVIRONMENT: {SQUARE_ENVIRONMENT}")
+        
         # Generate state parameter for security
         state = f"business_{business_id}_{uuid.uuid4()}"
+        print(f"🔍 DEBUG: Generated state: {state}")
         
         base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
         
@@ -364,7 +369,7 @@ def square_oauth_authorize():
                    f"session=false&" \
                    f"state={state}"
         
-        print(f"Generated Square OAuth URL for business: {business_id}")
+        print(f"🔍 DEBUG: Generated OAuth URL: {oauth_url}")
         
         return jsonify({
             'oauth_url': oauth_url,
@@ -375,6 +380,8 @@ def square_oauth_authorize():
     except Exception as e:
         print(f"❌ Error generating Square OAuth URL: {e}")
         return jsonify({'error': str(e), 'success': False}), 400
+
+
 
 @app.route('/square/oauth/callback', methods=['GET'])
 def square_oauth_callback():

@@ -1,6 +1,14 @@
 from flask import Flask, jsonify, request
 import stripe
 import os
+import requests
+import json
+import uuid
+
+# Square Configuration
+SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")  # sq0idp-KDndMxSr3s3O7bYeVzqdQw
+SQUARE_APPLICATION_SECRET = os.getenv("SQUARE_APPLICATION_SECRET")  # Your secret
+SQUARE_ENVIRONMENT = 'sandbox'  # Change to 'production' later
 
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -329,6 +337,148 @@ def get_recent_charge():
             'error': str(e),
             'success': False
         }), 400
+
+@app.route('/square/oauth/authorize', methods=['POST'])
+def square_oauth_authorize():
+    """Generate Square OAuth URL for merchant to connect"""
+    try:
+        data = request.get_json()
+        business_id = data.get('business_id')
+        
+        # Generate state parameter for security
+        state = f"business_{business_id}_{uuid.uuid4()}"
+        
+        base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
+        
+        oauth_url = f"{base_url}/oauth2/authorize?" \
+                   f"client_id={SQUARE_APPLICATION_ID}&" \
+                   f"scope=MERCHANT_PROFILE_READ+ORDERS_READ+PAYMENTS_READ&" \
+                   f"session=false&" \
+                   f"state={state}"
+        
+        print(f"Generated Square OAuth URL for business: {business_id}")
+        
+        return jsonify({
+            'oauth_url': oauth_url,
+            'state': state,
+            'success': True
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating Square OAuth URL: {e}")
+        return jsonify({'error': str(e), 'success': False}), 400
+
+@app.route('/square/oauth/callback', methods=['GET'])
+def square_oauth_callback():
+    """Handle Square OAuth callback"""
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        if error:
+            print(f"❌ Square OAuth error: {error}")
+            return f"<html><body><h2>❌ Connection Failed</h2><p>{error}</p></body></html>"
+        
+        if not code:
+            return "<html><body><h2>❌ No authorization code received</h2></body></html>"
+        
+        # Exchange code for access token
+        base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
+        
+        token_data = {
+            'client_id': SQUARE_APPLICATION_ID,
+            'client_secret': SQUARE_APPLICATION_SECRET,
+            'code': code,
+            'grant_type': 'authorization_code'
+        }
+        
+        response = requests.post(f"{base_url}/oauth2/token", json=token_data)
+        token_response = response.json()
+        
+        if 'access_token' not in token_response:
+            print(f"❌ Token exchange failed: {token_response}")
+            return "<html><body><h2>❌ Token exchange failed</h2></body></html>"
+        
+        access_token = token_response['access_token']
+        merchant_id = token_response['merchant_id']
+        
+        print(f"✅ Square OAuth successful for merchant: {merchant_id}")
+        
+        # TODO: Save access_token and merchant_id to your database
+        # You'll need to associate this with the business_id from the state parameter
+        
+        return """
+        <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <h2>✅ Square Connected Successfully!</h2>
+                <p>You can now close this window and return to the LUX app.</p>
+                <script>
+                    setTimeout(function() {
+                        window.close();
+                    }, 3000);
+                </script>
+            </body>
+        </html>
+        """
+        
+    except Exception as e:
+        print(f"❌ Square OAuth callback error: {e}")
+        return f"<html><body><h2>❌ Connection Error</h2><p>{str(e)}</p></body></html>"
+
+@app.route('/square/get-recent-order', methods=['POST'])
+def get_recent_square_order():
+    """Fetch merchant's most recent Square order"""
+    try:
+        data = request.get_json()
+        business_id = data.get('business_id')
+        
+        # TODO: Get access_token from database using business_id
+        access_token = "YOUR_STORED_ACCESS_TOKEN"  # Replace with database lookup
+        
+        base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Get recent orders
+        response = requests.post(f"{base_url}/v2/orders/search", 
+                               headers=headers,
+                               json={
+                                   "limit": 1,
+                                   "query": {
+                                       "sort": {
+                                           "sort_field": "CREATED_AT",
+                                           "sort_order": "DESC"
+                                       }
+                                   }
+                               })
+        
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to fetch orders', 'success': False}), 400
+        
+        orders_data = response.json()
+        
+        if not orders_data.get('orders'):
+            return jsonify({'success': False, 'message': 'No recent orders found'})
+        
+        recent_order = orders_data['orders'][0]
+        total_money = recent_order.get('total_money', {})
+        amount_cents = total_money.get('amount', 0)
+        
+        return jsonify({
+            'amount': amount_cents,  # Amount in cents
+            'currency': total_money.get('currency', 'USD'),
+            'order_id': recent_order.get('id'),
+            'success': True
+        })
+        
+    except Exception as e:
+        print(f"❌ Error fetching Square order: {e}")
+        return jsonify({'error': str(e), 'success': False}), 400
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))

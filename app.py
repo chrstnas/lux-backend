@@ -13,6 +13,14 @@ SQUARE_ENVIRONMENT = 'sandbox'  # Change to 'production' later
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
+@app.route('/debug/square-config', methods=['GET'])
+def debug_square_config():
+    return jsonify({
+        'SQUARE_APPLICATION_ID': SQUARE_APPLICATION_ID,
+        'SQUARE_ENVIRONMENT': SQUARE_ENVIRONMENT,
+        'has_secret': SQUARE_APPLICATION_SECRET is not None
+    })
+
 @app.route('/check-mode', methods=['GET'])
 def check_mode():
     return jsonify({

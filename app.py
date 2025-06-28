@@ -414,24 +414,29 @@ def square_oauth_callback():
         if 'access_token' not in token_response:
             print(f"❌ Token exchange failed: {token_response}")
             return "<html><body><h2>❌ Token exchange failed</h2></body></html>"
-        
+
+
+
         access_token = token_response['access_token']
         merchant_id = token_response['merchant_id']
         
-print(f"✅ Square OAuth successful for merchant: {merchant_id}")
+        print(f"✅ Square OAuth successful for merchant: {merchant_id}")  # Fix indentation
+        
+        # Save tokens in memory (replace with database later)
+        if not hasattr(square_oauth_callback, 'tokens'):
+            square_oauth_callback.tokens = {}
+        
+        business_id = state.split('_')[1] if state and 'business_' in state else 'default'
+        square_oauth_callback.tokens[business_id] = {
+            'access_token': access_token,
+            'merchant_id': merchant_id
+        }
+        print(f"✅ Saved Square token for business: {business_id}")
+        
+        return """
 
-# Save tokens in memory (replace with database later)
-if not hasattr(square_oauth_callback, 'tokens'):
-    square_oauth_callback.tokens = {}
 
-business_id = state.split('_')[1] if state and 'business_' in state else 'default'
-square_oauth_callback.tokens[business_id] = {
-    'access_token': access_token,
-    'merchant_id': merchant_id
-}
-print(f"✅ Saved Square token for business: {business_id}")
 
-return """
         <html>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
                 <h2>✅ Square Connected Successfully!</h2>

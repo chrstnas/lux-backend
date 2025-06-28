@@ -418,12 +418,20 @@ def square_oauth_callback():
         access_token = token_response['access_token']
         merchant_id = token_response['merchant_id']
         
-        print(f"✅ Square OAuth successful for merchant: {merchant_id}")
-        
-        # TODO: Save access_token and merchant_id to your database
-        # You'll need to associate this with the business_id from the state parameter
-        
-        return """
+print(f"✅ Square OAuth successful for merchant: {merchant_id}")
+
+# Save tokens in memory (replace with database later)
+if not hasattr(square_oauth_callback, 'tokens'):
+    square_oauth_callback.tokens = {}
+
+business_id = state.split('_')[1] if state and 'business_' in state else 'default'
+square_oauth_callback.tokens[business_id] = {
+    'access_token': access_token,
+    'merchant_id': merchant_id
+}
+print(f"✅ Saved Square token for business: {business_id}")
+
+return """
         <html>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
                 <h2>✅ Square Connected Successfully!</h2>
@@ -448,8 +456,13 @@ def get_recent_square_order():
         data = request.get_json()
         business_id = data.get('business_id')
         
-        # TODO: Get access_token from database using business_id
-        access_token = "YOUR_STORED_ACCESS_TOKEN"  # Replace with database lookup
+# Get token from memory
+if hasattr(square_oauth_callback, 'tokens') and business_id in square_oauth_callback.tokens:
+    access_token = square_oauth_callback.tokens[business_id]['access_token']
+    print(f"✅ Found Square token for business: {business_id}")
+else:
+    print(f"❌ No Square token found for business: {business_id}")
+    return jsonify({'error': 'No Square connection found', 'success': False}), 400
         
         base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
         

@@ -453,7 +453,7 @@ def square_oauth_callback():
     except Exception as e:
         print(f"❌ Square OAuth callback error: {e}")
         return f"<html><body><h2>❌ Connection Error</h2><p>{str(e)}</p></body></html>"
-
+        
 @app.route('/square/get-recent-order', methods=['POST'])
 def get_recent_square_order():
     """Fetch merchant's most recent Square order"""
@@ -461,14 +461,14 @@ def get_recent_square_order():
         data = request.get_json()
         business_id = data.get('business_id')
         
-# Get token from memory
-if hasattr(square_oauth_callback, 'tokens') and business_id in square_oauth_callback.tokens:
-    access_token = square_oauth_callback.tokens[business_id]['access_token']
-    print(f"✅ Found Square token for business: {business_id}")
-else:
-    print(f"❌ No Square token found for business: {business_id}")
-    return jsonify({'error': 'No Square connection found', 'success': False}), 400
-        
+        # Get token from memory
+        if hasattr(square_oauth_callback, 'tokens') and business_id in square_oauth_callback.tokens:
+            access_token = square_oauth_callback.tokens[business_id]['access_token']
+            print(f"✅ Found Square token for business: {business_id}")
+        else:
+            print(f"❌ No Square token found for business: {business_id}")
+            return jsonify({'error': 'No Square connection found', 'success': False}), 400
+            
         base_url = 'https://connect.squareupsandbox.com' if SQUARE_ENVIRONMENT == 'sandbox' else 'https://connect.squareup.com'
         
         headers = {

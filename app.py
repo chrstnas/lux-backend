@@ -453,7 +453,8 @@ def square_oauth_callback():
     except Exception as e:
         print(f"❌ Square OAuth callback error: {e}")
         return f"<html><body><h2>❌ Connection Error</h2><p>{str(e)}</p></body></html>"
-        
+
+
 @app.route('/square/get-recent-order', methods=['POST'])
 def get_recent_square_order():
     """Fetch merchant's most recent Square order"""
@@ -476,29 +477,29 @@ def get_recent_square_order():
             'Content-Type': 'application/json'
         }
         
-# Get recent orders
-response = requests.post(f"{base_url}/v2/orders/search", 
-                       headers=headers,
-                       json={
-                           "limit": 1,
-                           "query": {
-                               "sort": {
-                                   "sort_field": "CREATED_AT",
-                                   "sort_order": "DESC"
-                               }
-                           }
-                       })
+        # Get recent orders
+        response = requests.post(f"{base_url}/v2/orders/search", 
+                               headers=headers,
+                               json={
+                                   "limit": 1,
+                                   "query": {
+                                       "sort": {
+                                           "sort_field": "CREATED_AT",
+                                           "sort_order": "DESC"
+                                       }
+                                   }
+                               })
 
-print(f"Square API response status: {response.status_code}")
-print(f"Square API response: {response.text[:500]}")  # First 500 chars
+        print(f"Square API response status: {response.status_code}")
+        print(f"Square API response: {response.text[:500]}")  # First 500 chars
 
-if response.status_code != 200:
-    error_detail = response.json().get('errors', [{}])[0].get('detail', 'Unknown error')
-    print(f"❌ Square API error: {error_detail}")
-    return jsonify({
-        'error': f'Square API error: {error_detail}',
-        'success': False
-    }), 400
+        if response.status_code != 200:
+            error_detail = response.json().get('errors', [{}])[0].get('detail', 'Unknown error')
+            print(f"❌ Square API error: {error_detail}")
+            return jsonify({
+                'error': f'Square API error: {error_detail}',
+                'success': False
+            }), 400
         
         orders_data = response.json()
         
@@ -519,8 +520,7 @@ if response.status_code != 200:
     except Exception as e:
         print(f"❌ Error fetching Square order: {e}")
         return jsonify({'error': str(e), 'success': False}), 400
-
-
+        
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

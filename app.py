@@ -465,6 +465,7 @@ def get_recent_square_order():
         # Get token from memory
         if hasattr(square_oauth_callback, 'tokens') and business_id in square_oauth_callback.tokens:
             access_token = square_oauth_callback.tokens[business_id]['access_token']
+            merchant_id = square_oauth_callback.tokens[business_id]['merchant_id']
             print(f"✅ Found Square token for business: {business_id}")
         else:
             print(f"❌ No Square token found for business: {business_id}")
@@ -477,11 +478,29 @@ def get_recent_square_order():
             'Content-Type': 'application/json'
         }
         
-        # Get recent orders
+        # First, get the merchant's locations
+        locations_response = requests.get(f"{base_url}/v2/locations", headers=headers)
+        
+        if locations_response.status_code != 200:
+            print(f"❌ Failed to get locations: {locations_response.text}")
+            return jsonify({'error': 'Failed to get merchant locations', 'success': False}), 400
+            
+        locations_data = locations_response.json()
+        
+        if not locations_data.get('locations'):
+            print("❌ No locations found for merchant")
+            return jsonify({'error': 'No locations found', 'success': False}), 400
+            
+        # Get the first location ID
+        location_id = locations_data['locations'][0]['id']
+        print(f"✅ Using location ID: {location_id}")
+        
+        # Now search for orders with the location ID
         response = requests.post(f"{base_url}/v2/orders/search", 
                                headers=headers,
                                json={
                                    "limit": 1,
+                                   "location_ids": [location_id],  # Add location_ids here
                                    "query": {
                                        "sort": {
                                            "sort_field": "CREATED_AT",
@@ -504,7 +523,32 @@ def get_recent_square_order():
         orders_data = response.json()
         
         if not orders_data.get('orders'):
-            return jsonify({'success': False, 'message': 'No recent orders found'})
+            print("No orders found - trying payments instead")
+            
+            # Try getting payments instead of orders
+            payments_response = requests.get(
+                f"{base_url}/v2/payments",
+                headers=headers,
+                params={
+                    "location_id": location_id,
+                    "limit": 1,
+                    "sort_order": "DESC"
+                }
+            )
+            
+            if payments_response.status_code == 200:
+                payments_data = payments_response.json()
+                if payments_data.get('payments'):
+                    payment = payments_data['payments'][0]
+                    amount_money = payment.get('amount_money', {})
+                    return jsonify({
+                        'amount': amount_money.get('amount', 0),
+                        'currency': amount_money.get('currency', 'USD'),
+                        'payment_id': payment.get('id'),
+                        'success': True
+                    })
+            
+            return jsonify({'success': False, 'message': 'No recent orders or payments found'})
         
         recent_order = orders_data['orders'][0]
         total_money = recent_order.get('total_money', {})
@@ -520,7 +564,9 @@ def get_recent_square_order():
     except Exception as e:
         print(f"❌ Error fetching Square order: {e}")
         return jsonify({'error': str(e), 'success': False}), 400
-        
+
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

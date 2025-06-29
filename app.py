@@ -8,7 +8,7 @@ import uuid
 # Square Configuration
 SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")  # sq0idp-KDndMxSr3s3O7bYeVzqdQw
 SQUARE_APPLICATION_SECRET = os.getenv("SQUARE_APPLICATION_SECRET")  # Your secret
-SQUARE_ENVIRONMENT = 'sandbox'  # Change to 'production' later
+SQUARE_ENVIRONMENT = 'production'  # Change to 'production' later
 
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")

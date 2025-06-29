@@ -476,21 +476,29 @@ def get_recent_square_order():
             'Content-Type': 'application/json'
         }
         
-        # Get recent orders
-        response = requests.post(f"{base_url}/v2/orders/search", 
-                               headers=headers,
-                               json={
-                                   "limit": 1,
-                                   "query": {
-                                       "sort": {
-                                           "sort_field": "CREATED_AT",
-                                           "sort_order": "DESC"
-                                       }
-                                   }
-                               })
-        
-        if response.status_code != 200:
-            return jsonify({'error': 'Failed to fetch orders', 'success': False}), 400
+# Get recent orders
+response = requests.post(f"{base_url}/v2/orders/search", 
+                       headers=headers,
+                       json={
+                           "limit": 1,
+                           "query": {
+                               "sort": {
+                                   "sort_field": "CREATED_AT",
+                                   "sort_order": "DESC"
+                               }
+                           }
+                       })
+
+print(f"Square API response status: {response.status_code}")
+print(f"Square API response: {response.text[:500]}")  # First 500 chars
+
+if response.status_code != 200:
+    error_detail = response.json().get('errors', [{}])[0].get('detail', 'Unknown error')
+    print(f"❌ Square API error: {error_detail}")
+    return jsonify({
+        'error': f'Square API error: {error_detail}',
+        'success': False
+    }), 400
         
         orders_data = response.json()
         

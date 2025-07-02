@@ -6,7 +6,7 @@ import json
 import uuid
 import hashlib
 from datetime import datetime
-from wallet_py3 import Pass, Barcode, StoreCard, Location
+from passbook.models import Pass, Barcode, StoreCard, Location
 import base64
 import io
 import tempfile

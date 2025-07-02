@@ -1,17 +1,295 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 import stripe
 import os
 import requests
 import json
 import uuid
+import hashlib
+from datetime import datetime
+from wallet import Pass, Barcode, StoreCard, Location
+import base64
+import io
+import tempfile
 
-# Square Configuration
-SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")  # sq0idp-KDndMxSr3s3O7bYeVzqdQw
-SQUARE_APPLICATION_SECRET = os.getenv("SQUARE_APPLICATION_SECRET")  # Your secret
-SQUARE_ENVIRONMENT = 'production'  # Change to 'production' later
-
+# Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+# Square Configuration
+SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")
+SQUARE_APPLICATION_SECRET = os.getenv("SQUARE_APPLICATION_SECRET")
+SQUARE_ENVIRONMENT = 'production'
+
+# Apple Wallet Configuration
+PASS_TYPE_ID = os.getenv("PASS_TYPE_ID")  # pass.com.tinas.lux.loyalty
+TEAM_ID = os.getenv("TEAM_ID")  # Your Apple Team ID
+PASS_CERTIFICATE = os.getenv("PASS_CERTIFICATE")  # Base64 encoded certificate
+PASS_PRIVATE_KEY = os.getenv("PASS_PRIVATE_KEY")  # Base64 encoded private key
+WWDR_CERTIFICATE = os.getenv("WWDR_CERTIFICATE")  # Base64 encoded WWDR cert
+
+# Color mapping for satBack tiers
+def get_tier_color(sat_back):
+    """Convert satBack percentage to RGB color string"""
+    colors = {
+        0: "rgb(156, 163, 175)",  # Gray
+        1: "rgb(239, 68, 68)",    # Red
+        2: "rgb(251, 146, 60)",   # Orange
+        3: "rgb(250, 204, 21)",   # Yellow
+        4: "rgb(34, 197, 94)",    # Green
+        5: "rgb(59, 130, 246)",   # Blue
+        6: "rgb(99, 102, 241)",   # Indigo
+        7: "rgb(147, 51, 234)"    # Violet
+    }
+    
+    if sat_back >= 7:
+        return colors[7]  # Violet for 7-11%
+    return colors.get(sat_back, colors[0])
+
+@app.route('/generate-wallet-pass', methods=['POST'])
+def generate_wallet_pass():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        merchant_id = data.get('merchant_id')
+        merchant_name = data.get('merchant_name')
+        merchant_location = data.get('location', {})
+        stamps = data.get('stamps', [])
+        sat_back = data.get('sat_back', 0)
+        credit_balance = data.get('credit_balance', 0)
+        
+        print(f"Generating pass for user {user_id} at {merchant_name}")
+        
+        # Create unique serial number
+        serial_number = f"{user_id}-{merchant_id}"
+        
+        # Create pass structure
+        pass_json = {
+            "formatVersion": 1,
+            "passTypeIdentifier": PASS_TYPE_ID,
+            "serialNumber": serial_number,
+            "teamIdentifier": TEAM_ID,
+            "organizationName": "LUX",
+            "description": f"{merchant_name} Loyalty Card",
+            "foregroundColor": "rgb(255, 255, 255)",
+            "backgroundColor": get_tier_color(sat_back),
+            "logoText": merchant_name,
+            
+            # Barcode for check-ins
+            "barcodes": [{
+                "format": "PKBarcodeFormatQR",
+                "message": f"{user_id}:{merchant_id}",
+                "messageEncoding": "iso-8859-1"
+            }],
+            
+            # Location-based notifications
+            "locations": [{
+                "latitude": merchant_location.get('lat', 34.0522),
+                "longitude": merchant_location.get('lng', -118.2437),
+                "relevantText": f"Welcome to {merchant_name}! Tap to check in"
+            }] if merchant_location.get('lat') else [],
+            
+            # Store card layout
+            "storeCard": {
+                # Big stamp count in center
+                "primaryFields": [{
+                    "key": "stamps",
+                    "label": "STAMPS",
+                    "value": f"{len([s for s in stamps if s])}/20",
+                    "textAlignment": "PKTextAlignmentCenter"
+                }],
+                
+                # Rewards rate and credit
+                "secondaryFields": [
+                    {
+                        "key": "rewards",
+                        "label": "REWARDS",
+                        "value": f"{sat_back}% back",
+                        "textAlignment": "PKTextAlignmentLeft"
+                    },
+                    {
+                        "key": "credit",
+                        "label": "CREDIT",
+                        "value": f"${credit_balance:.2f}",
+                        "textAlignment": "PKTextAlignmentRight"
+                    }
+                ],
+                
+                # Quick actions
+                "auxiliaryFields": [
+                    {
+                        "key": "checkin",
+                        "label": "",
+                        "value": "CHECK IN",
+                        "textAlignment": "PKTextAlignmentCenter",
+                        "link": f"luxapp://checkin/{merchant_id}"
+                    }
+                ],
+                
+                # Back of pass
+                "backFields": [
+                    {
+                        "key": "member",
+                        "label": "Member Since",
+                        "value": datetime.now().strftime("%B %Y")
+                    },
+                    {
+                        "key": "lastvisit",
+                        "label": "Last Visit", 
+                        "value": datetime.now().strftime("%B %d, %Y")
+                    },
+                    {
+                        "key": "merchantinfo",
+                        "label": f"Visit {merchant_name}",
+                        "value": "Tap to view in LUX app",
+                        "link": f"luxapp://merchant/{merchant_id}"
+                    },
+                    {
+                        "key": "stamps_detail",
+                        "label": "Your Stamps",
+                        "value": format_stamps_for_pass(stamps)
+                    }
+                ]
+            },
+            
+            # Update endpoint
+            "webServiceURL": "https://lux-stripe-backend.onrender.com/pass-updates",
+            "authenticationToken": generate_auth_token(serial_number)
+        }
+        
+        # Generate the .pkpass file
+        pass_path = create_pkpass_file(pass_json)
+        
+        # Read the file and return it
+        with open(pass_path, 'rb') as f:
+            pass_data = f.read()
+        
+        # Clean up temp file
+        os.remove(pass_path)
+        
+        return send_file(
+            io.BytesIO(pass_data),
+            mimetype='application/vnd.apple.pkpass',
+            as_attachment=True,
+            download_name=f'{merchant_name.lower().replace(" ", "-")}-loyalty.pkpass'
+        )
+        
+    except Exception as e:
+        print(f"Error generating pass: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+
+def format_stamps_for_pass(stamps):
+    """Format stamps as a grid for the pass back"""
+    grid = ""
+    for i in range(0, 20, 5):
+        row = []
+        for j in range(5):
+            idx = i + j
+            if idx < len(stamps) and stamps[idx]:
+                row.append(stamps[idx].get('emoji', '⭐'))
+            else:
+                row.append('○')
+        grid += ' '.join(row) + '\n'
+    return grid.strip()
+
+def generate_auth_token(serial_number):
+    """Generate authentication token for pass updates"""
+    secret = os.getenv('PASS_UPDATE_SECRET', 'your-secret-key')
+    return hashlib.sha256(f"{serial_number}-{secret}".encode()).hexdigest()[:32]
+
+def create_pkpass_file(pass_json):
+    """Create the actual .pkpass file using wallet-py3"""
+    
+    # Create a new pass
+    cardInfo = StoreCard()
+    
+    # Set primary fields
+    cardInfo.addPrimaryField('stamps', pass_json['storeCard']['primaryFields'][0]['value'], 'STAMPS')
+    
+    # Set secondary fields
+    for field in pass_json['storeCard']['secondaryFields']:
+        cardInfo.addSecondaryField(field['key'], field['value'], field['label'])
+    
+    # Create the pass
+    passfile = Pass(
+        cardInfo,
+        passTypeIdentifier=pass_json['passTypeIdentifier'],
+        organizationName=pass_json['organizationName'],
+        teamIdentifier=pass_json['teamIdentifier']
+    )
+    
+    # Set colors
+    passfile.backgroundColor = pass_json['backgroundColor']
+    passfile.foregroundColor = pass_json['foregroundColor']
+    passfile.description = pass_json['description']
+    passfile.serialNumber = pass_json['serialNumber']
+    
+    # Add barcode
+    passfile.barcode = Barcode(
+        message=pass_json['barcodes'][0]['message'],
+        format=pass_json['barcodes'][0]['format']
+    )
+    
+    # Add location
+    if pass_json.get('locations'):
+        loc = pass_json['locations'][0]
+        passfile.addLocation(loc['latitude'], loc['longitude'], loc.get('relevantText'))
+    
+    # Create the .pkpass file
+    # You need to decode your base64 certificates from env vars
+    cert_content = base64.b64decode(os.getenv('PASS_CERTIFICATE'))
+    key_content = base64.b64decode(os.getenv('PASS_PRIVATE_KEY'))
+    wwdr_content = base64.b64decode(os.getenv('WWDR_CERTIFICATE'))
+    
+    # Save certs to temp files (wallet-py3 needs file paths)
+    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as cert_file:
+        cert_file.write(cert_content)
+        cert_path = cert_file.name
+    
+    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as key_file:
+        key_file.write(key_content)
+        key_path = key_file.name
+        
+    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as wwdr_file:
+        wwdr_file.write(wwdr_content)
+        wwdr_path = wwdr_file.name
+    
+    # Create pass with certificates
+    passfile.certificate = cert_path
+    passfile.key = key_path
+    passfile.wwdr_certificate = wwdr_path
+    
+    # Generate the pass
+    passfile_path = passfile.create('.')
+    
+    # Clean up temp cert files
+    os.unlink(cert_path)
+    os.unlink(key_path)
+    os.unlink(wwdr_path)
+    
+    return passfile_path
+
+# Add this endpoint for pass updates
+@app.route('/pass-updates/<serial_number>', methods=['GET'])
+def get_pass_updates(serial_number):
+    """Check if pass needs updates"""
+    auth_token = request.headers.get('Authorization', '').replace('ApplePass ', '')
+    
+    # Verify auth token
+    expected_token = generate_auth_token(serial_number)
+    if auth_token != expected_token:
+        return '', 401
+    
+    # Check if pass needs update (check database for changes)
+    # For now, return no update needed
+    return '', 204
+
+# This is for later - payment updates
+@app.route('/update-pass-for-payment', methods=['POST'])
+def update_pass_for_payment():
+    # We'll implement this after basic passes work
+    pass
+
+# YOUR EXISTING ENDPOINTS CONTINUE HERE...
 
 @app.route('/debug/square-config', methods=['GET'])
 def debug_square_config():
@@ -564,6 +842,8 @@ def get_recent_square_order():
     except Exception as e:
         print(f"❌ Error fetching Square order: {e}")
         return jsonify({'error': str(e), 'success': False}), 400
+
+
 
 
 

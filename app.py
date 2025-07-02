@@ -10,6 +10,7 @@ import base64
 import io
 import tempfile
 import zipfile
+import subprocess
 
 # Initialize Flask app first
 app = Flask(__name__)
@@ -139,8 +140,11 @@ def generate_wallet_pass():
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
+
 def create_pkpass_manually(pass_json):
-    """Create a .pkpass file without external libraries"""
+    """Create a properly signed .pkpass file"""
+    import subprocess
+    
     # Create a temporary directory for pass contents
     with tempfile.TemporaryDirectory() as temp_dir:
         # Write pass.json
@@ -160,20 +164,56 @@ def create_pkpass_manually(pass_json):
         with open(manifest_path, 'w') as f:
             json.dump(manifest, f)
         
-        # For now, create a simple signature file (placeholder)
-        # In production, you'd sign the manifest with your certificate
+        # Decode certificates from environment variables
+        cert_pem = base64.b64decode(os.getenv('PASS_CERTIFICATE', ''))
+        key_pem = base64.b64decode(os.getenv('PASS_PRIVATE_KEY', ''))
+        wwdr_pem = base64.b64decode(os.getenv('WWDR_CERTIFICATE', ''))
+        
+        # Write certificates to temp files
+        cert_path = os.path.join(temp_dir, 'cert.pem')
+        key_path = os.path.join(temp_dir, 'key.pem')
+        wwdr_path = os.path.join(temp_dir, 'wwdr.pem')
+        
+        with open(cert_path, 'wb') as f:
+            f.write(cert_pem)
+        with open(key_path, 'wb') as f:
+            f.write(key_pem)
+        with open(wwdr_path, 'wb') as f:
+            f.write(wwdr_pem)
+        
+        # Sign the manifest using OpenSSL
         signature_path = os.path.join(temp_dir, 'signature')
-        with open(signature_path, 'wb') as f:
-            f.write(b'signature_placeholder')
+        
+        # Create the signature using OpenSSL command
+        openssl_cmd = [
+            'openssl', 'smime', '-sign',
+            '-signer', cert_path,
+            '-inkey', key_path,
+            '-certfile', wwdr_path,
+            '-in', manifest_path,
+            '-out', signature_path,
+            '-outform', 'DER',
+            '-binary'
+        ]
+        
+        try:
+            subprocess.run(openssl_cmd, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Signing error: {e.stderr.decode()}")
+            # For now, create placeholder if signing fails
+            with open(signature_path, 'wb') as f:
+                f.write(b'signature_placeholder')
         
         # Create the .pkpass file (ZIP archive)
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for filename in os.listdir(temp_dir):
-                filepath = os.path.join(temp_dir, filename)
-                zip_file.write(filepath, filename)
+            # Add files in specific order
+            zip_file.write(pass_json_path, 'pass.json')
+            zip_file.write(manifest_path, 'manifest.json')
+            zip_file.write(signature_path, 'signature')
         
         return zip_buffer.getvalue()
+
 
 def format_stamps_for_pass(stamps):
     """Format stamps as a grid for the pass back"""

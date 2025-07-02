@@ -6,10 +6,10 @@ import json
 import uuid
 import hashlib
 from datetime import datetime
-from wallet_py3 import Pass, Barcode, StoreCard, Location
 import base64
 import io
 import tempfile
+import zipfile
 
 # Initialize Flask app first
 app = Flask(__name__)
@@ -156,22 +156,12 @@ def generate_wallet_pass():
             "authenticationToken": generate_auth_token(serial_number)
         }
         
-        # Generate the .pkpass file
-        pass_path = create_pkpass_file(pass_json)
-        
-        # Read the file and return it
-        with open(pass_path, 'rb') as f:
-            pass_data = f.read()
-        
-        # Clean up temp file
-        os.remove(pass_path)
-        
-        return send_file(
-            io.BytesIO(pass_data),
-            mimetype='application/vnd.apple.pkpass',
-            as_attachment=True,
-            download_name=f'{merchant_name.lower().replace(" ", "-")}-loyalty.pkpass'
-        )
+        # For now, just return the JSON (we'll add actual pass creation later)
+        return jsonify({
+            'success': True,
+            'pass_url': 'https://lux-stripe-backend.onrender.com/test-pass.pkpass',
+            'message': 'Pass generation endpoint ready - actual file creation coming soon'
+        })
         
     except Exception as e:
         print(f"Error generating pass: {str(e)}")
@@ -196,78 +186,6 @@ def generate_auth_token(serial_number):
     secret = os.getenv('PASS_UPDATE_SECRET', 'your-secret-key')
     return hashlib.sha256(f"{serial_number}-{secret}".encode()).hexdigest()[:32]
 
-def create_pkpass_file(pass_json):
-    """Create the actual .pkpass file using wallet-py3"""
-    
-    # Create a new pass
-    cardInfo = StoreCard()
-    
-    # Set primary fields
-    cardInfo.addPrimaryField('stamps', pass_json['storeCard']['primaryFields'][0]['value'], 'STAMPS')
-    
-    # Set secondary fields
-    for field in pass_json['storeCard']['secondaryFields']:
-        cardInfo.addSecondaryField(field['key'], field['value'], field['label'])
-    
-    # Create the pass
-    passfile = Pass(
-        cardInfo,
-        passTypeIdentifier=pass_json['passTypeIdentifier'],
-        organizationName=pass_json['organizationName'],
-        teamIdentifier=pass_json['teamIdentifier']
-    )
-    
-    # Set colors
-    passfile.backgroundColor = pass_json['backgroundColor']
-    passfile.foregroundColor = pass_json['foregroundColor']
-    passfile.description = pass_json['description']
-    passfile.serialNumber = pass_json['serialNumber']
-    
-    # Add barcode
-    passfile.barcode = Barcode(
-        message=pass_json['barcodes'][0]['message'],
-        format=pass_json['barcodes'][0]['format']
-    )
-    
-    # Add location
-    if pass_json.get('locations'):
-        loc = pass_json['locations'][0]
-        passfile.addLocation(loc['latitude'], loc['longitude'], loc.get('relevantText'))
-    
-    # Create the .pkpass file
-    # You need to decode your base64 certificates from env vars
-    cert_content = base64.b64decode(os.getenv('PASS_CERTIFICATE'))
-    key_content = base64.b64decode(os.getenv('PASS_PRIVATE_KEY'))
-    wwdr_content = base64.b64decode(os.getenv('WWDR_CERTIFICATE'))
-    
-    # Save certs to temp files (wallet-py3 needs file paths)
-    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as cert_file:
-        cert_file.write(cert_content)
-        cert_path = cert_file.name
-    
-    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as key_file:
-        key_file.write(key_content)
-        key_path = key_file.name
-        
-    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as wwdr_file:
-        wwdr_file.write(wwdr_content)
-        wwdr_path = wwdr_file.name
-    
-    # Create pass with certificates
-    passfile.certificate = cert_path
-    passfile.key = key_path
-    passfile.wwdr_certificate = wwdr_path
-    
-    # Generate the pass
-    passfile_path = passfile.create('.')
-    
-    # Clean up temp cert files
-    os.unlink(cert_path)
-    os.unlink(key_path)
-    os.unlink(wwdr_path)
-    
-    return passfile_path
-
 # Add this endpoint for pass updates
 @app.route('/pass-updates/<serial_number>', methods=['GET'])
 def get_pass_updates(serial_number):
@@ -289,6 +207,7 @@ def update_pass_for_payment():
     # We'll implement this after basic passes work
     pass
 
+# YOUR EXISTING ENDPOINTS CONTINUE HERE...
 # YOUR EXISTING ENDPOINTS CONTINUE HERE...
 
 @app.route('/debug/square-config', methods=['GET'])

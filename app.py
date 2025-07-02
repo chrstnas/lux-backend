@@ -62,7 +62,7 @@ def generate_wallet_pass():
         # Create unique serial number
         serial_number = f"{user_id}-{merchant_id}"
         
-        # Create pass structure
+        # Create pass.json
         pass_json = {
             "formatVersion": 1,
             "passTypeIdentifier": PASS_TYPE_ID,
@@ -74,23 +74,19 @@ def generate_wallet_pass():
             "backgroundColor": get_tier_color(sat_back),
             "logoText": merchant_name,
             
-            # Barcode for check-ins
-            "barcodes": [{
+            "barcode": {
                 "format": "PKBarcodeFormatQR",
                 "message": f"{user_id}:{merchant_id}",
                 "messageEncoding": "iso-8859-1"
-            }],
+            },
             
-            # Location-based notifications
             "locations": [{
                 "latitude": merchant_location.get('lat', 34.0522),
                 "longitude": merchant_location.get('lng', -118.2437),
                 "relevantText": f"Welcome to {merchant_name}! Tap to check in"
             }] if merchant_location.get('lat') else [],
             
-            # Store card layout
             "storeCard": {
-                # Big stamp count in center
                 "primaryFields": [{
                     "key": "stamps",
                     "label": "STAMPS",
@@ -98,7 +94,6 @@ def generate_wallet_pass():
                     "textAlignment": "PKTextAlignmentCenter"
                 }],
                 
-                # Rewards rate and credit
                 "secondaryFields": [
                     {
                         "key": "rewards",
@@ -114,18 +109,6 @@ def generate_wallet_pass():
                     }
                 ],
                 
-                # Quick actions
-                "auxiliaryFields": [
-                    {
-                        "key": "checkin",
-                        "label": "",
-                        "value": "CHECK IN",
-                        "textAlignment": "PKTextAlignmentCenter",
-                        "link": f"luxapp://checkin/{merchant_id}"
-                    }
-                ],
-                
-                # Back of pass
                 "backFields": [
                     {
                         "key": "member",
@@ -136,36 +119,61 @@ def generate_wallet_pass():
                         "key": "lastvisit",
                         "label": "Last Visit", 
                         "value": datetime.now().strftime("%B %d, %Y")
-                    },
-                    {
-                        "key": "merchantinfo",
-                        "label": f"Visit {merchant_name}",
-                        "value": "Tap to view in LUX app",
-                        "link": f"luxapp://merchant/{merchant_id}"
-                    },
-                    {
-                        "key": "stamps_detail",
-                        "label": "Your Stamps",
-                        "value": format_stamps_for_pass(stamps)
                     }
                 ]
-            },
-            
-            # Update endpoint
-            "webServiceURL": "https://lux-stripe-backend.onrender.com/pass-updates",
-            "authenticationToken": generate_auth_token(serial_number)
+            }
         }
         
-        # For now, just return the JSON (we'll add actual pass creation later)
-        return jsonify({
-            'success': True,
-            'pass_url': 'https://lux-stripe-backend.onrender.com/test-pass.pkpass',
-            'message': 'Pass generation endpoint ready - actual file creation coming soon'
-        })
+        # Create the .pkpass file manually
+        pass_data = create_pkpass_manually(pass_json)
+        
+        # Return the pass file
+        return send_file(
+            io.BytesIO(pass_data),
+            mimetype='application/vnd.apple.pkpass',
+            as_attachment=True,
+            download_name=f'{merchant_name.lower().replace(" ", "-")}-loyalty.pkpass'
+        )
         
     except Exception as e:
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400
+
+def create_pkpass_manually(pass_json):
+    """Create a .pkpass file without external libraries"""
+    # Create a temporary directory for pass contents
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Write pass.json
+        pass_json_path = os.path.join(temp_dir, 'pass.json')
+        with open(pass_json_path, 'w') as f:
+            json.dump(pass_json, f)
+        
+        # Create manifest.json
+        manifest = {}
+        for filename in os.listdir(temp_dir):
+            filepath = os.path.join(temp_dir, filename)
+            with open(filepath, 'rb') as f:
+                content = f.read()
+                manifest[filename] = hashlib.sha1(content).hexdigest()
+        
+        manifest_path = os.path.join(temp_dir, 'manifest.json')
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest, f)
+        
+        # For now, create a simple signature file (placeholder)
+        # In production, you'd sign the manifest with your certificate
+        signature_path = os.path.join(temp_dir, 'signature')
+        with open(signature_path, 'wb') as f:
+            f.write(b'signature_placeholder')
+        
+        # Create the .pkpass file (ZIP archive)
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for filename in os.listdir(temp_dir):
+                filepath = os.path.join(temp_dir, filename)
+                zip_file.write(filepath, filename)
+        
+        return zip_buffer.getvalue()
 
 def format_stamps_for_pass(stamps):
     """Format stamps as a grid for the pass back"""

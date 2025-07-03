@@ -11,6 +11,7 @@ import io
 import tempfile
 import zipfile
 import subprocess
+import shutil
 
 # Initialize Flask app first
 app = Flask(__name__)
@@ -154,9 +155,7 @@ def generate_wallet_pass():
         return jsonify({'error': str(e)}), 400
 def create_pkpass_manually(pass_json):
     """Create a properly signed .pkpass file"""
-    import subprocess
-    import tempfile
-    import shutil
+
     
     # Create a temporary directory for pass contents
     with tempfile.TemporaryDirectory() as temp_dir:

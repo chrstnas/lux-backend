@@ -153,7 +153,6 @@ def generate_wallet_pass():
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
-
 def create_pkpass_manually(pass_json):
     """Create a properly signed .pkpass file"""
     import subprocess
@@ -164,17 +163,17 @@ def create_pkpass_manually(pass_json):
         pass_json_path = os.path.join(temp_dir, 'pass.json')
         with open(pass_json_path, 'w') as f:
             json.dump(pass_json, f)
-
+        
         # Create placeholder icon (required!)
-icon_path = os.path.join(temp_dir, 'icon.png')
-# Create a simple 29x29 black square as placeholder
-with open(icon_path, 'wb') as f:
-    # PNG header + minimal black square
-    f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
-
-
-    manifest={}
-    for filename in os.listdir(temp_dir):
+        icon_path = os.path.join(temp_dir, 'icon.png')
+        # Create a simple 29x29 black square as placeholder
+        with open(icon_path, 'wb') as f:
+            # PNG header + minimal black square
+            f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
+        
+        # Create manifest.json
+        manifest = {}
+        for filename in os.listdir(temp_dir):
             filepath = os.path.join(temp_dir, filename)
             with open(filepath, 'rb') as f:
                 content = f.read()
@@ -185,7 +184,6 @@ with open(icon_path, 'wb') as f:
             json.dump(manifest, f)
         
         # Decode certificates from environment variables
-        
         cert_pem = fix_base64_padding(os.getenv('PASS_CERTIFICATE', ''))
         key_pem = fix_base64_padding(os.getenv('PASS_PRIVATE_KEY', ''))
         wwdr_pem = fix_base64_padding(os.getenv('WWDR_CERTIFICATE', ''))
@@ -232,9 +230,11 @@ with open(icon_path, 'wb') as f:
             zip_file.write(pass_json_path, 'pass.json')
             zip_file.write(manifest_path, 'manifest.json')
             zip_file.write(signature_path, 'signature')
-            zip_file.write(icon_path, 'icon.png') 
+            zip_file.write(icon_path, 'icon.png')
         
         return zip_buffer.getvalue()
+
+
 
 
 def format_stamps_for_pass(stamps):

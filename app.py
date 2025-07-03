@@ -152,103 +152,128 @@ def generate_wallet_pass():
     except Exception as e:
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400
-
 def create_pkpass_manually(pass_json):
     """Create a properly signed .pkpass file"""
     import subprocess
+    import tempfile
+    import shutil
     
     # Create a temporary directory for pass contents
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Write pass.json
-        pass_json_path = os.path.join(temp_dir, 'pass.json')
-        with open(pass_json_path, 'w') as f:
-            json.dump(pass_json, f)
-        
-        # Create placeholder icon (required!)
-        icon_path = os.path.join(temp_dir, 'icon.png')
-        # Create a simple 29x29 black square as placeholder
-        with open(icon_path, 'wb') as f:
-            # PNG header + minimal black square
-            f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
-        
-        # Create manifest.json
-        manifest = {}
-        for filename in os.listdir(temp_dir):
-            filepath = os.path.join(temp_dir, filename)
-            with open(filepath, 'rb') as f:
-                content = f.read()
-                manifest[filename] = hashlib.sha1(content).hexdigest()
-        
-        manifest_path = os.path.join(temp_dir, 'manifest.json')
-        with open(manifest_path, 'w') as f:
-            json.dump(manifest, f)
-        
-        # Decode certificates from environment variables
-        cert_pem = fix_base64_padding(os.getenv('PASS_CERTIFICATE', ''))
-        key_pem = fix_base64_padding(os.getenv('PASS_PRIVATE_KEY', ''))
-        wwdr_pem = fix_base64_padding(os.getenv('WWDR_CERTIFICATE', ''))
-        print(f"Cert length: {len(cert_pem)}")
-        print(f"Key length: {len(key_pem)}")
-        print(f"WWDR length: {len(wwdr_pem)}")
-
-        
-        # Write certificates to temp files
-        cert_path = os.path.join(temp_dir, 'cert.pem')
-        key_path = os.path.join(temp_dir, 'key.pem')
-        wwdr_path = os.path.join(temp_dir, 'wwdr.pem')
-        
-        with open(cert_path, 'wb') as f:
-            f.write(cert_pem)
-        with open(key_path, 'wb') as f:
-            f.write(key_pem)
-        with open(wwdr_path, 'wb') as f:
-            f.write(wwdr_pem)
-        
-        # Sign the manifest using OpenSSL
-        signature_path = os.path.join(temp_dir, 'signature')
-        
-        # Create the signature using OpenSSL command
-        openssl_cmd = [
-            'openssl', 'smime', '-sign',
-            '-signer', cert_path,
-            '-inkey', key_path,
-            '-certfile', wwdr_path,
-            '-in', manifest_path,
-            '-out', signature_path,
-            '-outform', 'DER',
-            '-binary'
-        ]
-        
         try:
-            result = subprocess.run(openssl_cmd, check=True, capture_output=True)
-            print(f"✅ Signing successful")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Signing error: {e.stderr.decode()}")
-            print(f"❌ Command output: {e.stdout.decode()}")
-            # For now, create placeholder if signing fails
-            with open(signature_path, 'wb') as f:
-                f.write(b'signature_placeholder')
+            # Write pass.json
+            pass_json_path = os.path.join(temp_dir, 'pass.json')
+            with open(pass_json_path, 'w') as f:
+                json.dump(pass_json, f, indent=2)
+            
+            # Create required images (minimum set)
+            # Icon - 29x29 black square
+            icon_path = os.path.join(temp_dir, 'icon.png')
+            icon2x_path = os.path.join(temp_dir, 'icon@2x.png')
+            with open(icon_path, 'wb') as f:
+                f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
+            # Copy same image for @2x
+            shutil.copy(icon_path, icon2x_path)
+            
+            # Create manifest.json with SHA-1 hashes
+            manifest = {}
+            files_to_hash = ['pass.json', 'icon.png', 'icon@2x.png']
+            
+            for filename in files_to_hash:
+                filepath = os.path.join(temp_dir, filename)
+                if os.path.exists(filepath):
+                    with open(filepath, 'rb') as f:
+                        content = f.read()
+                        manifest[filename] = hashlib.sha1(content).hexdigest()
+            
+            manifest_path = os.path.join(temp_dir, 'manifest.json')
+            with open(manifest_path, 'w') as f:
+                json.dump(manifest, f, indent=2)
+            
+            # Decode certificates from environment variables
+            try:
+                cert_pem = fix_base64_padding(os.getenv('PASS_CERTIFICATE', ''))
+                key_pem = fix_base64_padding(os.getenv('PASS_PRIVATE_KEY', ''))
+                wwdr_pem = fix_base64_padding(os.getenv('WWDR_CERTIFICATE', ''))
+                
+                print(f"Cert decoded length: {len(cert_pem)}")
+                print(f"Key decoded length: {len(key_pem)}")
+                print(f"WWDR decoded length: {len(wwdr_pem)}")
+                
+                # Write certificates to temp files
+                cert_path = os.path.join(temp_dir, 'cert.pem')
+                key_path = os.path.join(temp_dir, 'key.pem')
+                wwdr_path = os.path.join(temp_dir, 'wwdr.pem')
+                
+                with open(cert_path, 'wb') as f:
+                    f.write(cert_pem)
+                with open(key_path, 'wb') as f:
+                    f.write(key_pem)
+                with open(wwdr_path, 'wb') as f:
+                    f.write(wwdr_pem)
+                
+                # Create the signature using OpenSSL
+                signature_path = os.path.join(temp_dir, 'signature')
+                
+                # Method 1: Try using PKCS7 signing
+                openssl_cmd = [
+                    'openssl', 'smime', '-sign', '-binary',
+                    '-signer', cert_path,
+                    '-inkey', key_path,
+                    '-certfile', wwdr_path,
+                    '-in', manifest_path,
+                    '-out', signature_path,
+                    '-outform', 'DER'
+                ]
+                
+                result = subprocess.run(openssl_cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    print(f"❌ OpenSSL signing failed: {result.stderr}")
+                    
+                    # Try alternative method
+                    alt_cmd = [
+                        'openssl', 'cms', '-sign', '-binary',
+                        '-signer', cert_path,
+                        '-inkey', key_path,
+                        '-certfile', wwdr_path,
+                        '-in', manifest_path,
+                        '-out', signature_path,
+                        '-outform', 'DER'
+                    ]
+                    
+                    alt_result = subprocess.run(alt_cmd, capture_output=True, text=True)
+                    
+                    if alt_result.returncode != 0:
+                        print(f"❌ Alternative signing also failed: {alt_result.stderr}")
+                        raise Exception("Signing failed")
+                    else:
+                        print("✅ Signed with CMS command")
+                else:
+                    print("✅ Signed successfully with SMIME")
+                
+            except Exception as e:
+                print(f"❌ Certificate processing error: {str(e)}")
+                raise
+            
+            # Create the .pkpass file (ZIP archive)
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Files must be added in this specific order
+                zip_file.write(pass_json_path, 'pass.json')
+                zip_file.write(icon_path, 'icon.png')
+                zip_file.write(icon2x_path, 'icon@2x.png')
+                zip_file.write(manifest_path, 'manifest.json')
+                zip_file.write(signature_path, 'signature')
+            
+            print(f"✅ Created .pkpass file, size: {len(zip_buffer.getvalue())} bytes")
+            return zip_buffer.getvalue()
+            
         except Exception as e:
-            print(f"❌ Unexpected error during signing: {str(e)}")
-            with open(signature_path, 'wb') as f:
-                f.write(b'signature_placeholder')
-          
-
-
-        
-        # Create the .pkpass file (ZIP archive)
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Add files in specific order
-            zip_file.write(pass_json_path, 'pass.json')
-            zip_file.write(manifest_path, 'manifest.json')
-            zip_file.write(signature_path, 'signature')
-            zip_file.write(icon_path, 'icon.png')
-        
-        return zip_buffer.getvalue()
-
-
-
+            print(f"❌ Error in create_pkpass_manually: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise 
 
 def format_stamps_for_pass(stamps):
     """Format stamps as a grid for the pass back"""

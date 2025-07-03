@@ -164,6 +164,13 @@ def create_pkpass_manually(pass_json):
         pass_json_path = os.path.join(temp_dir, 'pass.json')
         with open(pass_json_path, 'w') as f:
             json.dump(pass_json, f)
+
+        # Create placeholder icon (required!)
+icon_path = os.path.join(temp_dir, 'icon.png')
+# Create a simple 29x29 black square as placeholder
+with open(icon_path, 'wb') as f:
+    # PNG header + minimal black square
+    f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
         
         # Create manifest.json
         manifest = {}
@@ -225,6 +232,7 @@ def create_pkpass_manually(pass_json):
             zip_file.write(pass_json_path, 'pass.json')
             zip_file.write(manifest_path, 'manifest.json')
             zip_file.write(signature_path, 'signature')
+            zip_file.write(icon_path, 'icon.png') 
         
         return zip_buffer.getvalue()
 

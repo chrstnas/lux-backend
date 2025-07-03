@@ -60,6 +60,7 @@ def fix_base64_padding(base64_string):
     return base64.b64decode(base64_string)
 
 
+
 @app.route('/generate-wallet-pass', methods=['POST'])
 def generate_wallet_pass():
     try:
@@ -71,13 +72,14 @@ def generate_wallet_pass():
         stamps = data.get('stamps', [])
         sat_back = data.get('sat_back', 0)
         credit_balance = data.get('credit_balance', 0)
+        user_balance = data.get('user_balance', 0)  # Add user's LUX balance
         
         print(f"Generating pass for user {user_id} at {merchant_name}")
         
         # Create unique serial number
         serial_number = f"{user_id}-{merchant_id}"
         
-        # Create pass.json
+        # Create enhanced pass structure
         pass_json = {
             "formatVersion": 1,
             "passTypeIdentifier": PASS_TYPE_ID,
@@ -89,41 +91,83 @@ def generate_wallet_pass():
             "backgroundColor": get_tier_color(sat_back),
             "logoText": merchant_name,
             
-            "barcode": {
+            # Barcode for check-ins
+            "barcodes": [{
                 "format": "PKBarcodeFormatQR",
                 "message": f"{user_id}:{merchant_id}",
-                "messageEncoding": "iso-8859-1"
-            },
+                "messageEncoding": "iso-8859-1",
+                "altText": "Scan for check-in"
+            }],
             
+            # Smart location triggers
             "locations": [{
                 "latitude": merchant_location.get('lat', 34.0522),
                 "longitude": merchant_location.get('lng', -118.2437),
-                "relevantText": f"Welcome to {merchant_name}! Tap to check in"
+                "relevantText": f"Welcome to {merchant_name}! Tap for quick actions",
+                "maxDistance": 100  # Trigger within 100 meters
             }] if merchant_location.get('lat') else [],
             
-            "storeCard": {
+            # Using generic pass for more flexibility
+            "generic": {
+                # Header - show balance
+                "headerFields": [{
+                    "key": "balance",
+                    "label": "LUX BALANCE",
+                    "value": f"${user_balance:.2f}",
+                    "textAlignment": "PKTextAlignmentNatural"
+                }],
+                
+                # Primary field - big stamp count
                 "primaryFields": [{
                     "key": "stamps",
                     "label": "STAMPS",
                     "value": f"{len([s for s in stamps if s])}/20",
-                    "textAlignment": "PKTextAlignmentCenter"
+                    "textAlignment": "PKTextAlignmentCenter",
+                    "changeMessage": "You earned a new stamp!"
                 }],
                 
+                # Secondary fields - rewards info
                 "secondaryFields": [
                     {
                         "key": "rewards",
-                        "label": "REWARDS",
+                        "label": "TODAY'S REWARDS",
                         "value": f"{sat_back}% back",
                         "textAlignment": "PKTextAlignmentLeft"
                     },
                     {
                         "key": "credit",
-                        "label": "CREDIT",
+                        "label": "STORE CREDIT",
                         "value": f"${credit_balance:.2f}",
                         "textAlignment": "PKTextAlignmentRight"
                     }
                 ],
                 
+                # Auxiliary fields - quick action buttons
+                "auxiliaryFields": [
+                    {
+                        "key": "checkin",
+                        "label": "",
+                        "value": "✓ CHECK IN",
+                        "textAlignment": "PKTextAlignmentLeft",
+                        "link": f"luxapp://checkin/{merchant_id}"
+                    },
+                    {
+                        "key": "pay",
+                        "label": "",
+                        "value": "💳 PAY",
+                        "textAlignment": "PKTextAlignmentCenter",
+                        "link": f"luxapp://pay?merchantId={merchant_id}&merchant={merchant_name}"
+                    },
+                    {
+                        "key": "give",
+                        "label": "",
+                        "value": "💝 GIVE $5",
+                        "textAlignment": "PKTextAlignmentRight",
+                        "link": f"luxapp://donate/{merchant_id}/5"
+                    }
+                ],
+                
+                # Back of pass - detailed info
                 "backFields": [
                     {
                         "key": "member",
@@ -131,15 +175,40 @@ def generate_wallet_pass():
                         "value": datetime.now().strftime("%B %Y")
                     },
                     {
-                        "key": "lastvisit",
-                        "label": "Last Visit", 
-                        "value": datetime.now().strftime("%B %d, %Y")
+                        "key": "tier",
+                        "label": "Rewards Tier",
+                        "value": f"{get_tier_name(sat_back)} ({sat_back}% back)"
+                    },
+                    {
+                        "key": "stamps_visual",
+                        "label": "Your Stamps",
+                        "value": format_stamps_for_pass(stamps)
+                    },
+                    {
+                        "key": "instructions",
+                        "label": "How to Use",
+                        "value": "• Tap CHECK IN when you arrive\n• Tap PAY for quick payments\n• Tap GIVE for instant donations\n• Show QR code to merchant for manual check-in"
+                    },
+                    {
+                        "key": "merchant_link",
+                        "label": "",
+                        "value": f"View {merchant_name} in LUX App →",
+                        "link": f"luxapp://merchant/{merchant_id}"
+                    },
+                    {
+                        "key": "support",
+                        "label": "Need Help?",
+                        "value": "support@luxapp.com"
                     }
                 ]
-            }
+            },
+            
+            # Enable updates
+            "webServiceURL": "https://lux-stripe-backend.onrender.com/pass",
+            "authenticationToken": generate_auth_token(serial_number)
         }
         
-        # Create the .pkpass file manually
+        # Generate the .pkpass file
         pass_data = create_pkpass_manually(pass_json)
         
         # Return the pass file
@@ -150,6 +219,26 @@ def generate_wallet_pass():
             download_name=f'{merchant_name.lower().replace(" ", "-")}-loyalty.pkpass'
         )
         
+    except Exception as e:
+        print(f"Error generating pass: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+
+def get_tier_name(sat_back):
+    """Get tier name based on satBack percentage"""
+    tiers = {
+        0: "Basic",
+        1: "Bronze",
+        2: "Silver", 
+        3: "Gold",
+        4: "Emerald",
+        5: "Sapphire",
+        6: "Ruby",
+        7: "Diamond"
+    }
+    if sat_back >= 7:
+        return tiers[7]
+    return tiers.get(sat_back, tiers[0])
+    
     except Exception as e:
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400

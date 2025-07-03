@@ -239,9 +239,9 @@ def get_tier_name(sat_back):
         return tiers[7]
     return tiers.get(sat_back, tiers[0])
     
-    except Exception as e:
-        print(f"Error generating pass: {str(e)}")
-        return jsonify({'error': str(e)}), 400
+   
+       
+        
 def create_pkpass_manually(pass_json):
     """Create a properly signed .pkpass file"""
 

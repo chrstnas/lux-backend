@@ -28,6 +28,8 @@ PASS_CERTIFICATE = os.getenv("PASS_CERTIFICATE")  # Base64 encoded certificate
 PASS_PRIVATE_KEY = os.getenv("PASS_PRIVATE_KEY")  # Base64 encoded private key
 WWDR_CERTIFICATE = os.getenv("WWDR_CERTIFICATE")  # Base64 encoded WWDR cert
 
+
+
 # Color mapping for satBack tiers
 def get_tier_color(sat_back):
     """Convert satBack percentage to RGB color string"""
@@ -45,6 +47,17 @@ def get_tier_color(sat_back):
     if sat_back >= 7:
         return colors[7]  # Violet for 7-11%
     return colors.get(sat_back, colors[0])
+
+def fix_base64_padding(base64_string):
+    """Fix base64 padding issues"""
+    if not base64_string:
+        return b''
+    # Add padding if needed
+    missing_padding = len(base64_string) % 4
+    if missing_padding:
+        base64_string += '=' * (4 - missing_padding)
+    return base64.b64decode(base64_string)
+
 
 @app.route('/generate-wallet-pass', methods=['POST'])
 def generate_wallet_pass():
@@ -165,9 +178,10 @@ def create_pkpass_manually(pass_json):
             json.dump(manifest, f)
         
         # Decode certificates from environment variables
-        cert_pem = base64.b64decode(os.getenv('PASS_CERTIFICATE', ''))
-        key_pem = base64.b64decode(os.getenv('PASS_PRIVATE_KEY', ''))
-        wwdr_pem = base64.b64decode(os.getenv('WWDR_CERTIFICATE', ''))
+        
+        cert_pem = fix_base64_padding(os.getenv('PASS_CERTIFICATE', ''))
+        key_pem = fix_base64_padding(os.getenv('PASS_PRIVATE_KEY', ''))
+        wwdr_pem = fix_base64_padding(os.getenv('WWDR_CERTIFICATE', ''))
         
         # Write certificates to temp files
         cert_path = os.path.join(temp_dir, 'cert.pem')

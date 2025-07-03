@@ -187,6 +187,10 @@ def create_pkpass_manually(pass_json):
         cert_pem = fix_base64_padding(os.getenv('PASS_CERTIFICATE', ''))
         key_pem = fix_base64_padding(os.getenv('PASS_PRIVATE_KEY', ''))
         wwdr_pem = fix_base64_padding(os.getenv('WWDR_CERTIFICATE', ''))
+        print(f"Cert length: {len(cert_pem)}")
+        print(f"Key length: {len(key_pem)}")
+        print(f"WWDR length: {len(wwdr_pem)}")
+
         
         # Write certificates to temp files
         cert_path = os.path.join(temp_dir, 'cert.pem')
@@ -216,12 +220,21 @@ def create_pkpass_manually(pass_json):
         ]
         
         try:
-            subprocess.run(openssl_cmd, check=True, capture_output=True)
+            result = subprocess.run(openssl_cmd, check=True, capture_output=True)
+            print(f"✅ Signing successful")
         except subprocess.CalledProcessError as e:
-            print(f"Signing error: {e.stderr.decode()}")
+            print(f"❌ Signing error: {e.stderr.decode()}")
+            print(f"❌ Command output: {e.stdout.decode()}")
             # For now, create placeholder if signing fails
             with open(signature_path, 'wb') as f:
                 f.write(b'signature_placeholder')
+        except Exception as e:
+            print(f"❌ Unexpected error during signing: {str(e)}")
+            with open(signature_path, 'wb') as f:
+                f.write(b'signature_placeholder')
+          
+
+
         
         # Create the .pkpass file (ZIP archive)
         zip_buffer = io.BytesIO()

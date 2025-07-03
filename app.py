@@ -13,6 +13,8 @@ import zipfile
 import subprocess
 import shutil
 
+# from google.cloud import firestore  # Uncomment when ready to use
+
 # Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -61,6 +63,11 @@ def fix_base64_padding(base64_string):
 
 
 
+
+
+
+
+
 @app.route('/generate-wallet-pass', methods=['POST'])
 def generate_wallet_pass():
     try:
@@ -72,12 +79,52 @@ def generate_wallet_pass():
         stamps = data.get('stamps', [])
         sat_back = data.get('sat_back', 0)
         credit_balance = data.get('credit_balance', 0)
-        user_balance = data.get('user_balance', 0)  # Add user's LUX balance
+        user_balance = data.get('user_balance', 0)
+        is_nonprofit = data.get('is_nonprofit', False)  # NEW
+        has_qr_payments = data.get('has_qr_payments', False)  # NEW
         
         print(f"Generating pass for user {user_id} at {merchant_name}")
         
         # Create unique serial number
         serial_number = f"{user_id}-{merchant_id}"
+        
+        # Determine background color
+        if is_nonprofit:
+            background_color = "rgb(255, 255, 255)"  # White for nonprofits
+        else:
+            background_color = get_tier_color(sat_back)
+        
+        # Build auxiliary fields based on business type
+        auxiliary_fields = []
+        
+        # Always add check-in button
+        auxiliary_fields.append({
+            "key": "checkin",
+            "label": "",
+            "value": "✓ CHECK IN",
+            "textAlignment": "PKTextAlignmentLeft",
+            "link": f"luxapp://checkin/{merchant_id}"
+        })
+        
+        # Add appropriate payment button
+        if is_nonprofit:
+            # Nonprofit gets GIVE button
+            auxiliary_fields.append({
+                "key": "give",
+                "label": "",
+                "value": "💝 GIVE",
+                "textAlignment": "PKTextAlignmentCenter",
+                "link": f"luxapp://give/{merchant_id}"
+            })
+        else:
+            # Regular merchant gets PAY button
+            auxiliary_fields.append({
+                "key": "pay",
+                "label": "",
+                "value": "💳 PAY",
+                "textAlignment": "PKTextAlignmentCenter",
+                "link": f"luxapp://smartpay/{merchant_id}"
+            })
         
         # Create enhanced pass structure
         pass_json = {
@@ -86,33 +133,25 @@ def generate_wallet_pass():
             "serialNumber": serial_number,
             "teamIdentifier": TEAM_ID,
             "organizationName": "LUX",
-            "description": f"{merchant_name} Loyalty Card",
-            "foregroundColor": "rgb(255, 255, 255)",
-            "backgroundColor": get_tier_color(sat_back),
+            "description": f"{merchant_name} {'Support' if is_nonprofit else 'Loyalty'} Card",
+            "foregroundColor": "rgb(0, 0, 0)" if is_nonprofit else "rgb(255, 255, 255)",
+            "backgroundColor": background_color,
             "logoText": merchant_name,
-            
-            # Barcode for check-ins
-            "barcodes": [{
-                "format": "PKBarcodeFormatQR",
-                "message": f"{user_id}:{merchant_id}",
-                "messageEncoding": "iso-8859-1",
-                "altText": "Scan for check-in"
-            }],
             
             # Smart location triggers
             "locations": [{
                 "latitude": merchant_location.get('lat', 34.0522),
                 "longitude": merchant_location.get('lng', -118.2437),
-                "relevantText": f"Welcome to {merchant_name}! Tap for quick actions",
-                "maxDistance": 100  # Trigger within 100 meters
+                "relevantText": f"Welcome to {merchant_name}!",
+                "maxDistance": 100
             }] if merchant_location.get('lat') else [],
             
-            # Using generic pass for more flexibility
+            # Using generic pass for flexibility
             "generic": {
                 # Header - show balance
                 "headerFields": [{
                     "key": "balance",
-                    "label": "LUX BALANCE",
+                    "label": "YOUR BALANCE",
                     "value": f"${user_balance:.2f}",
                     "textAlignment": "PKTextAlignmentNatural"
                 }],
@@ -130,8 +169,8 @@ def generate_wallet_pass():
                 "secondaryFields": [
                     {
                         "key": "rewards",
-                        "label": "TODAY'S REWARDS",
-                        "value": f"{sat_back}% back",
+                        "label": "REWARDS" if not is_nonprofit else "IMPACT",
+                        "value": f"{sat_back}% back" if not is_nonprofit else "Thank you!",
                         "textAlignment": "PKTextAlignmentLeft"
                     },
                     {
@@ -142,32 +181,10 @@ def generate_wallet_pass():
                     }
                 ],
                 
-                # Auxiliary fields - quick action buttons
-                "auxiliaryFields": [
-                    {
-                        "key": "checkin",
-                        "label": "",
-                        "value": "✓ CHECK IN",
-                        "textAlignment": "PKTextAlignmentLeft",
-                        "link": f"luxapp://checkin/{merchant_id}"
-                    },
-                    {
-                        "key": "pay",
-                        "label": "",
-                        "value": "💳 PAY",
-                        "textAlignment": "PKTextAlignmentCenter",
-                        "link": f"luxapp://pay?merchantId={merchant_id}&merchant={merchant_name}"
-                    },
-                    {
-                        "key": "give",
-                        "label": "",
-                        "value": "💝 GIVE $5",
-                        "textAlignment": "PKTextAlignmentRight",
-                        "link": f"luxapp://donate/{merchant_id}/5"
-                    }
-                ],
+                # Our dynamic auxiliary fields (buttons)
+                "auxiliaryFields": auxiliary_fields,
                 
-                # Back of pass - detailed info
+                # Back of pass
                 "backFields": [
                     {
                         "key": "member",
@@ -175,38 +192,39 @@ def generate_wallet_pass():
                         "value": datetime.now().strftime("%B %Y")
                     },
                     {
-                        "key": "tier",
-                        "label": "Rewards Tier",
-                        "value": f"{get_tier_name(sat_back)} ({sat_back}% back)"
+                        "key": "lastvisit",
+                        "label": "Last Visit",
+                        "value": datetime.now().strftime("%B %d, %Y")
                     },
                     {
-                        "key": "stamps_visual",
-                        "label": "Your Stamps",
+                        "key": "stamps_detail",
+                        "label": "Your Progress",
                         "value": format_stamps_for_pass(stamps)
-                    },
-                    {
-                        "key": "instructions",
-                        "label": "How to Use",
-                        "value": "• Tap CHECK IN when you arrive\n• Tap PAY for quick payments\n• Tap GIVE for instant donations\n• Show QR code to merchant for manual check-in"
-                    },
-                    {
-                        "key": "merchant_link",
-                        "label": "",
-                        "value": f"View {merchant_name} in LUX App →",
-                        "link": f"luxapp://merchant/{merchant_id}"
-                    },
-                    {
-                        "key": "support",
-                        "label": "Need Help?",
-                        "value": "support@luxapp.com"
                     }
                 ]
             },
             
-            # Enable updates
+            # Enable updates - CRITICAL for real-time color changes
             "webServiceURL": "https://lux-stripe-backend.onrender.com/pass",
             "authenticationToken": generate_auth_token(serial_number)
         }
+        
+        # Add Lightning scanner link if merchant has QR payments
+        if has_qr_payments and not is_nonprofit:
+            pass_json["generic"]["backFields"].append({
+                "key": "lightning_scan",
+                "label": "",
+                "value": "⚡ Scan Lightning Invoice",
+                "link": f"luxapp://scan-lightning/{merchant_id}"
+            })
+        
+        # Add navigation link to merchant profile
+        pass_json["generic"]["backFields"].append({
+            "key": "merchant_link",
+            "label": "",
+            "value": f"View in LUX App →",
+            "link": f"luxapp://merchant/{merchant_id}"
+        })
         
         # Generate the .pkpass file
         pass_data = create_pkpass_manually(pass_json)
@@ -222,6 +240,11 @@ def generate_wallet_pass():
     except Exception as e:
         print(f"Error generating pass: {str(e)}")
         return jsonify({'error': str(e)}), 400
+
+
+
+
+
 
 def get_tier_name(sat_back):
     """Get tier name based on satBack percentage"""
@@ -381,6 +404,63 @@ def generate_auth_token(serial_number):
     """Generate authentication token for pass updates"""
     secret = os.getenv('PASS_UPDATE_SECRET', 'your-secret-key')
     return hashlib.sha256(f"{serial_number}-{secret}".encode()).hexdigest()[:32]
+
+
+
+@app.route('/v1/devices/<device_id>/registrations/<pass_type>/<serial>', methods=['POST'])
+def register_pass(device_id, pass_type, serial):
+    """Called when a pass is first installed"""
+    data = request.get_json()
+    push_token = data.get('pushToken')
+    
+    # Store this registration in Firestore
+    registration_data = {
+        'deviceId': device_id,
+        'passTypeIdentifier': pass_type,
+        'serialNumber': serial,
+        'pushToken': push_token,
+        'registeredAt': datetime.now().isoformat()
+    }
+    
+    # Store in Firestore for later push updates
+    # Note: You'll need to import firestore at the top of your file
+    # from google.cloud import firestore
+    # db = firestore.Client()
+    # db.collection('pass_registrations').document(f"{device_id}_{serial}").set(registration_data)
+    
+    print(f"✅ Pass registered: {serial} on device {device_id}")
+    return '', 201
+
+@app.route('/v1/passes/<pass_type>/<serial>', methods=['GET'])
+def get_updated_pass(pass_type, serial):
+    """Called when device requests updated pass"""
+    auth_token = request.headers.get('Authorization', '').replace('ApplePass ', '')
+    
+    # Verify auth token
+    expected_token = generate_auth_token(serial)
+    if auth_token != expected_token:
+        return '', 401
+    
+    # Parse serial to get user and merchant IDs
+    user_id, merchant_id = serial.split('-')
+    
+    # TODO: Fetch current business data from Firestore and regenerate pass
+    # For now, return 304 (not modified)
+    return '', 304
+
+@app.route('/v1/log', methods=['POST'])
+def log_pass_activity():
+    """Log pass activity for debugging"""
+    logs = request.get_json().get('logs', [])
+    for log in logs:
+        print(f"📱 Pass log: {log}")
+    return '', 200
+
+
+
+
+
+
 
 # Add this endpoint for pass updates
 @app.route('/pass-updates/<serial_number>', methods=['GET'])

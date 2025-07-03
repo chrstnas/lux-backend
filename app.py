@@ -171,10 +171,10 @@ icon_path = os.path.join(temp_dir, 'icon.png')
 with open(icon_path, 'wb') as f:
     # PNG header + minimal black square
     f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x1d\x00\x00\x00\x1d\x08\x02\x00\x00\x00\xfd\xd4\x9as\x00\x00\x00\x1dIDATx\x9c\xed\xc1\x01\r\x00\x00\x00\xc2\xa0\xf7Om\x0e7\xa0\x00\x00\x00\x00\x00\x00\x00\x00\xbe\r!\x00\x00\x01\x9a`\xe1\xd5\x00\x00\x00\x00IEND\xaeB`\x82')
-        
-        # Create manifest.json
-        manifest = {}
-        for filename in os.listdir(temp_dir):
+
+
+    manifest={}
+    for filename in os.listdir(temp_dir):
             filepath = os.path.join(temp_dir, filename)
             with open(filepath, 'rb') as f:
                 content = f.read()

@@ -103,7 +103,7 @@ def generate_wallet_pass():
             "label": "",
             "value": "✓ CHECK IN",
             "textAlignment": "PKTextAlignmentLeft",
-            "link": f"luxapp://checkin/{merchant_id}"
+            "attributedValue": f"<a href='luxapp://checkin/{merchant_id}'>✓ CHECK IN</a>"
         })
         
         # Add appropriate payment button

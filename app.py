@@ -166,6 +166,9 @@ def generate_wallet_pass():
                 }],
                 
                 # Secondary fields - rewards info
+
+
+                # In your secondaryFields array, add:
                 "secondaryFields": [
                     {
                         "key": "rewards",
@@ -174,12 +177,16 @@ def generate_wallet_pass():
                         "textAlignment": "PKTextAlignmentLeft"
                     },
                     {
-                        "key": "credit",
-                        "label": "STORE CREDIT",
-                        "value": f"${credit_balance:.2f}",
+                        "key": "checkin_action",
+                        "label": "",
+                        "value": "✓ CHECK IN",
+                        "attributedValue": f"<a href='luxapp://checkin/{merchant_id}'>✓ CHECK IN</a>",
                         "textAlignment": "PKTextAlignmentRight"
                     }
                 ],
+                
+
+
                 
                 # Our dynamic auxiliary fields (buttons)
                 "auxiliaryFields": auxiliary_fields,

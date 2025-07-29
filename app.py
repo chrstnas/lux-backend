@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, redirect
 import stripe
 import os
 import requests
@@ -12,6 +12,15 @@ import tempfile
 import zipfile
 import subprocess
 import shutil
+
+
+@app.route('/', methods=['GET'])
+def handle_nfc_redirect():
+    card_id = request.args.get('cardId', 'unknown')
+    redirect_url = f'luxapp://pay/{card_id}?merchantId={card_id}&merchant=TestMerchant'
+    print(f"🔁 Redirecting to: {redirect_url}")
+    return redirect(redirect_url, code=302)
+
 
 # from google.cloud import firestore  # Uncomment when ready to use
 

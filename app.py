@@ -14,6 +14,10 @@ import subprocess
 import shutil
 
 
+# Initialize Flask app first
+app = Flask(__name__)
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():
     card_id = request.args.get('cardId', 'unknown')
@@ -24,9 +28,6 @@ def handle_nfc_redirect():
 
 # from google.cloud import firestore  # Uncomment when ready to use
 
-# Initialize Flask app first
-app = Flask(__name__)
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 # Square Configuration
 SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")

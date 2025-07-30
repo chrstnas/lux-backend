@@ -12,29 +12,46 @@ import tempfile
 import zipfile
 import subprocess
 import shutil
-
+from google.cloud import firestore
 
 # Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-
+# Initialize Firestore
+db = firestore.Client()
 
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():
     card_id = request.args.get('cardId', 'unknown')
     amount = request.args.get('amount')
-    merchant = request.args.get('merchant', 'Merchant')
-
-    query_params = f"?merchantId={card_id}&merchant={merchant}"
-    if amount:
-        query_params += f"&amount={amount}"
-
-    redirect_url = f"luxapp://pay/{card_id}{query_params}"
-    print(f"🔁 Redirecting to: {redirect_url}")
-    return redirect(redirect_url, code=302)
-
-
+    
+    try:
+        # Look up business by nfcCardId
+        businesses_ref = db.collection('businesses')
+        query = businesses_ref.where('nfcCardId', '==', card_id).limit(1)
+        docs = list(query.stream())
+        
+        if docs:
+            business_doc = docs[0]
+            business_data = business_doc.to_dict()
+            business_id = business_doc.id
+            merchant_name = business_data.get('name', 'Unknown Business')
+            
+            query_params = f"?merchantId={business_id}&merchant={merchant_name}"
+            if amount:
+                query_params += f"&amount={amount}"
+            
+            redirect_url = f"luxapp://pay/{card_id}{query_params}"
+            print(f"🔁 Found {merchant_name}, redirecting to: {redirect_url}")
+            
+            return redirect(redirect_url, code=302)
+        else:
+            return f"<html><body><h2>NFC Card {card_id} not registered</h2></body></html>", 404
+            
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        return f"<html><body><h2>Database error</h2></body></html>", 500
 
 # from google.cloud import firestore  # Uncomment when ready to use
 

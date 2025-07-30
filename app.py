@@ -14,11 +14,9 @@ import subprocess
 import shutil
 from google.cloud import firestore
 
-# Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# Initialize Firestore
 db = firestore.Client()
 
 @app.route('/', methods=['GET'])

@@ -15,6 +15,7 @@ import shutil
 from google.cloud import firestore
 from google.oauth2 import service_account
 
+
 # Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")

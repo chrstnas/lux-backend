@@ -18,12 +18,22 @@ import shutil
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
+
+
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():
     card_id = request.args.get('cardId', 'unknown')
-    redirect_url = f'luxapp://pay/{card_id}?merchantId={card_id}&merchant=TestMerchant'
+    amount = request.args.get('amount')
+    merchant = request.args.get('merchant', 'Merchant')
+
+    query_params = f"?merchantId={card_id}&merchant={merchant}"
+    if amount:
+        query_params += f"&amount={amount}"
+
+    redirect_url = f"luxapp://pay/{card_id}{query_params}"
     print(f"🔁 Redirecting to: {redirect_url}")
     return redirect(redirect_url, code=302)
+
 
 
 # from google.cloud import firestore  # Uncomment when ready to use

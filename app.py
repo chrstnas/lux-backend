@@ -13,11 +13,16 @@ import zipfile
 import subprocess
 import shutil
 from google.cloud import firestore
+from google.oauth2 import service_account
 
+# Initialize Flask app first
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-db = firestore.Client()
+# Initialize Firestore with manual credentials
+creds_dict = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+credentials = service_account.Credentials.from_service_account_info(creds_dict)
+db = firestore.Client(credentials=credentials, project=creds_dict["project_id"])
 
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():

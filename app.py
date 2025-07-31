@@ -25,60 +25,76 @@ creds_dict = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
 credentials = service_account.Credentials.from_service_account_info(creds_dict)
 db = firestore.Client(credentials=credentials, project=creds_dict["project_id"])
 
-
-
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():
-    card_id = request.args.get('cardId', 'unknown')
-    url_amount = request.args.get('amount')
-    
-    print(f"🔍 Request: cardId={card_id}, url_amount={url_amount}")
-    
-    try:
-        # Look up business by nfcCardId
-        businesses_ref = db.collection('businesses')
-        query = businesses_ref.where('nfcCardId', '==', card_id).limit(1)
-        docs = list(query.stream())
-        
-        if docs:
-            business_doc = docs[0]
-            business_data = business_doc.to_dict()
-            business_id = business_doc.id
-            merchant_name = business_data.get('name', 'Unknown Business')
-            
-            # CHECK FOR PENDING CHARGE IN nfc_payments collection
-            pending_amount = None
-            try:
-                nfc_payment_doc = db.collection('nfc_payments').document(business_id).get()
-                if nfc_payment_doc.exists:
-                    payment_data = nfc_payment_doc.to_dict()
-                    if payment_data.get('status') == 'pending':
-                        pending_amount = payment_data.get('amount')
-                        print(f"🔍 Found pending charge: ${pending_amount}")
-            except Exception as e:
-                print(f"⚠️ Error checking pending charge: {e}")
-            
-            # Use URL amount first, then pending amount
-            final_amount = url_amount or pending_amount
-            
-            query_params = f"?merchantId={business_id}&merchant={merchant_name}"
-            if final_amount:
-                query_params += f"&amount={final_amount}"
-            
-            redirect_url = f"luxapp://pay/{card_id}{query_params}"
-            print(f"🔁 Found {merchant_name}, amount={final_amount}, redirecting to: {redirect_url}")
-            
-            return redirect(redirect_url, code=302)
-        else:
-            print(f"❌ No business found with nfcCardId='{card_id}'")
-            return f"<html><body><h2>NFC Card {card_id} not registered</h2></body></html>", 404
-            
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        return f"<html><body><h2>Database error: {e}</h2></body></html>", 500
-
-
-
+   card_id = request.args.get('cardId', 'unknown')
+   url_amount = request.args.get('amount')
+   
+   print(f"🔍 Request: cardId={card_id}, url_amount={url_amount}")
+   print(f"🔍 User-Agent: {request.headers.get('User-Agent', 'None')}")
+   
+   try:
+       # Look up business by nfcCardId
+       businesses_ref = db.collection('businesses')
+       query = businesses_ref.where('nfcCardId', '==', card_id).limit(1)
+       docs = list(query.stream())
+       
+       print(f"🔍 Firestore query for nfcCardId='{card_id}' returned {len(docs)} results")
+       
+       if docs:
+           business_doc = docs[0]
+           business_data = business_doc.to_dict()
+           business_id = business_doc.id
+           merchant_name = business_data.get('name', 'Unknown Business')
+           
+           print(f"🔍 Found business: {merchant_name} (ID: {business_id})")
+           
+           # CHECK FOR PENDING CHARGE IN nfc_payments collection
+           pending_amount = None
+           try:
+               nfc_payment_doc = db.collection('nfc_payments').document(business_id).get()
+               if nfc_payment_doc.exists:
+                   payment_data = nfc_payment_doc.to_dict()
+                   if payment_data.get('status') == 'pending':
+                       # Check if charge has expired
+                       expires_at = payment_data.get('expiresAt')
+                       if expires_at:
+                           current_time = datetime.now()
+                           expire_time = expires_at.replace(tzinfo=None) if hasattr(expires_at, 'replace') else expires_at
+                           
+                           if expire_time > current_time:
+                               pending_amount = payment_data.get('amount')
+                               print(f"🔍 Found valid pending charge: ${pending_amount}")
+                           else:
+                               print(f"⏰ Pending charge expired, clearing...")
+                               # Clear expired charge
+                               db.collection('nfc_payments').document(business_id).delete()
+                       else:
+                           # No expiry time - treat as expired
+                           print(f"⏰ No expiry time, clearing charge...")
+                           db.collection('nfc_payments').document(business_id).delete()
+           except Exception as e:
+               print(f"⚠️ Error checking pending charge: {e}")
+           
+           # Use URL amount first, then pending amount
+           final_amount = url_amount or pending_amount
+           
+           query_params = f"?merchantId={business_id}&merchant={merchant_name}"
+           if final_amount:
+               query_params += f"&amount={final_amount}"
+           
+           redirect_url = f"luxapp://pay/{card_id}{query_params}"
+           print(f"🔁 Found {merchant_name}, amount={final_amount}, redirecting to: {redirect_url}")
+           
+           return redirect(redirect_url, code=302)
+       else:
+           print(f"❌ No business found with nfcCardId='{card_id}'")
+           return f"<html><body><h2>NFC Card {card_id} not registered</h2></body></html>", 404
+           
+   except Exception as e:
+       print(f"❌ Database error: {e}")
+       return f"<html><body><h2>Database error: {e}</h2></body></html>", 500
+       
 # Square Configuration
 SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")
 SQUARE_APPLICATION_SECRET = os.getenv("SQUARE_APPLICATION_SECRET")

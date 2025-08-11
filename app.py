@@ -14,7 +14,9 @@ import subprocess
 import shutil
 from google.cloud import firestore
 from google.oauth2 import service_account
-
+from firebase_admin import messaging
+import firebase_admin
+from firebase_admin import credentials as admin_credentials  # Changed to avoid conflict
 
 # Initialize Flask app first
 app = Flask(__name__)
@@ -24,6 +26,73 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 creds_dict = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
 credentials = service_account.Credentials.from_service_account_info(creds_dict)
 db = firestore.Client(credentials=credentials, project=creds_dict["project_id"])
+
+# Initialize Firebase Admin
+if not firebase_admin._apps:
+    admin_cred = admin_credentials.Certificate(creds_dict)  # Use the same creds_dict
+    firebase_admin.initialize_app(admin_cred)
+
+
+@app.route('/send-merchant-notification', methods=['POST'])
+def send_merchant_notification():
+    """Send push notification to merchant when payment received"""
+    try:
+        data = request.get_json()
+        merchant_id = data.get('merchant_id')
+        amount = data.get('amount', 0)
+        tip_amount = data.get('tip_amount', 0)
+        payment_method = data.get('payment_method', 'unknown')
+        customer_name = data.get('customer_name', 'Customer')
+        
+        # Create in-app notification in Firestore
+        notification_data = {
+            'type': 'paymentReceived',
+            'userId': merchant_id,
+            'amount': amount,
+            'tipAmount': tip_amount,
+            'paymentMethod': payment_method,
+            'customerName': customer_name,
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'isRead': False
+        }
+        
+        db.collection('businesses').document(merchant_id).collection('notifications').add(notification_data)
+        
+        # Send FCM push notification
+        try:
+            # Build the notification message
+            if tip_amount > 0:
+                body = f"{customer_name} paid ${amount:.2f} + ${tip_amount:.2f} tip"
+            else:
+                body = f"{customer_name} paid ${amount:.2f}"
+            
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title='💰 Payment Received!',
+                    body=body,
+                ),
+                data={
+                    'type': 'payment_received',
+                    'merchant_id': merchant_id,
+                    'amount': str(amount),
+                    'tip_amount': str(tip_amount)
+                },
+                topic=f'merchant_{merchant_id}'
+            )
+            
+            # Send the message
+            response = messaging.send(message)
+            print(f'✅ Push notification sent: {response}')
+            
+        except Exception as fcm_error:
+            print(f'⚠️ FCM error (notification still created): {fcm_error}')
+            # Don't fail the whole request if push fails
+        
+        return jsonify({'success': True}), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/', methods=['GET'])
 def handle_nfc_redirect():

@@ -5,3 +5,4 @@ Werkzeug==2.0.1
 google-cloud-firestore
 google-auth
 requests
+firebase-admin==6.2.0

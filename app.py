@@ -18,7 +18,7 @@ from firebase_admin import messaging
 import firebase_admin
 from firebase_admin import credentials as admin_credentials  # Changed to avoid conflict
 
-# Initialize Flask app first
+# Initialize Flask app first 
 app = Flask(__name__)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
